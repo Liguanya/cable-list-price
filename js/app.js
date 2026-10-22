@@ -181,7 +181,9 @@
       mainCores: it.mainCores ? Number(it.mainCores) : mainCoresOf(it.cores),
       section: Number(it.section),
       price: Number(it.price),
-      spec: it.spec || ''
+      spec: it.spec || '',
+      source: it.source === 'estimated' ? 'estimated' : 'official',
+      basis: it.basis || ''
     };
   }
 
@@ -225,13 +227,13 @@
     var hit = items.filter(function (it) {
       return it.model === nm && it.cores === cores && it.section === section;
     })[0];
-    if (hit) return { price: hit.price, source: 'official', basis: '' };
+    if (hit) return { price: hit.price, source: hit.source, basis: hit.basis };
 
     // 2. 材质+基型+芯结构+截面（跨同基型如 YJV/YJV22，官方价）
     hit = items.filter(function (it) {
       return it.family === fam && it.cores === cores && it.section === section;
     })[0];
-    if (hit) return { price: hit.price, source: 'official', basis: '' };
+    if (hit) return { price: hit.price, source: hit.source, basis: hit.basis };
 
     // —— 以下为缺规格估算，严格按"类似规格"分层，单芯/多芯绝不混 ——
     var pool, est;
