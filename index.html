@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>电力电缆清单定额智能组价系统</title>
+    <title>电缆配管配线桥架自动组价系统</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
-        /* ===== 电缆页专属样式 ===== */
+        /* ===== 专属样式 ===== */
         .control-bar {
             background: linear-gradient(135deg, #1a5e63 0%, #0d3d44 100%);
             border-radius: 12px;
@@ -35,20 +35,30 @@
         .summary-card .number { font-size: 26px; font-weight: bold; }
         .summary-card .label { font-size: 12px; opacity: .9; margin-top: 4px; }
         .summary-card.amber { background: linear-gradient(135deg, #b9770e 0%, #7e5109 100%); }
+        .summary-card.teal2 { background: linear-gradient(135deg, #2e8b8b 0%, #17606a 100%); }
 
         .cell-name { text-align: left !important; white-space: normal !important; min-width: 220px; max-width: 300px; }
+        .cell-qcode { white-space: nowrap !important; }
         .cell-qname { text-align: left !important; white-space: normal !important; min-width: 180px; }
         .cell-price { white-space: nowrap !important; font-weight: 600; color: #0d3d44; }
-        .cell-warn { font-size: 12px; color: #b9770e; text-align: left !important; white-space: normal !important; max-width: 220px; }
+        .cell-warn { font-size: 12px; color: #b9770e; text-align: left !important; white-space: normal !important; max-width: 240px; }
         tr.row-warn { background: #fff8e6; }
         tr.row-warn:hover { background: #fdeec4; }
 
-        .mat-badge { padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+        .mat-badge { padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
         .mat-铜 { background: #fbe3c4; color: #a85c10; }
         .mat-铝 { background: #dceaf5; color: #1f5d8c; }
+        .lay-static { font-size: 12px; color: #1a5e63; font-weight: 600; white-space: nowrap; }
+        .cell-select {
+            padding: 5px 8px; border-radius: 7px; border: 1.5px solid #2bb3a0; font-size: 13px;
+            color: #0d3d44; background: #f2fbf9; cursor: pointer; font-weight: 600; outline: none;
+        }
+        .cell-select:hover { border-color: #1a5e63; }
         .tag { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
         .tag-pending { background: #eee; color: #888; }
         .tag-est { background: #fdebd0; color: #9c6500; }
+        .tag-na { background: #eceff1; color: #607d8b; }
+        .tag-infer { background: #e3f2fd; color: #1565c0; cursor: help; }
         .legend { font-size: 12px; color: #888; margin: 6px 0 0; }
         @media (max-width: 900px) { .summary { grid-template-columns: repeat(2, 1fr); } }
     </style>
@@ -56,19 +66,24 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔌 电力电缆清单定额智能组价系统</h1>
-            <p>天津2025清单计价规范 · Excel上传自动识别铜/铝芯与截面 · 自动套定额 · 主材价联动天津信息价</p>
+            <h1>🔌 电缆配管配线桥架自动组价系统</h1>
+            <p>天津2025清单计价规范 · Excel上传自动识别六大类并套清单定额 · 电力电缆主材价联动天津信息价 · 全部本地计算</p>
         </div>
 
         <div class="content">
             <div class="instructions">
                 <h3>📋 使用说明</h3>
                 <ul>
-                    <li>上传工程量清单 Excel（.xlsx/.xls）：<strong>A列=序号</strong>、<strong>B列=项目名称（电缆名称及截面）</strong>、<strong>C列=工程量</strong>（单位m），首行可为表头</li>
-                    <li>系统自动识别<strong>铜芯/铝芯</strong>、提取<strong>型号与主截面</strong>，统一套清单 <strong>030409001 电力电缆</strong></li>
-                    <li>定额分档：铝芯 <strong>2-566~2-570</strong>、铜芯 <strong>2-576~2-580</strong>（截面10/35/120/240/400mm²，超过400按400档）</li>
-                    <li>主材价取天津信息价<strong>中准价·除税价（元/m）</strong>；缺规格自动按相邻截面估算并标注，价格库无该期数据时显示"待录入"</li>
-                    <li>选择「广联达 / 建经科技」格式后导出，全部计算在本地完成，不上传任何数据</li>
+                    <li>上传工程量清单 Excel（.xlsx/.xls）：<strong>A列=序号</strong>、<strong>B列=项目名称（型号/规格/截面）</strong>、<strong>C列=工程量</strong>，首行可为表头</li>
+                    <li>按项目名称自动识别六类并套清单：
+                        <strong>电力电缆 030409001</strong>、<strong>控制电缆 030409002</strong>、<strong>电力电缆头 030409003</strong>、
+                        <strong>配管 030412001</strong>、<strong>桥架 030412003</strong>、<strong>配线 030412004</strong></li>
+                    <li><strong>配管</strong>在结果表"敷设方式"列手动选<strong>明敷/暗敷</strong>；<strong>配线</strong>手动选<strong>照明线路/动力线路</strong>（多芯软导线自动识别）；切换后定额实时重算</li>
+                    <li>定额规则：电力电缆 铜2-576~580 / 铝2-566~570；控制电缆 2-586~590（6~48芯）；电缆头 1kV/10kV 户内热（冷）缩终端头；
+                        电线管(JDG/KBG)明2-1117~1122·暗2-1123~1128、镀锌钢管(SC/RC)明2-1139~1149·暗2-1150~1160；
+                        照明2-1318~1320、动力2-1335起、多芯软线2-1359起；钢制槽式桥架2-637~643</li>
+                    <li>电力电缆主材价取天津信息价<strong>中准价·除税价（元/m）</strong>，缺规格自动就近估算并标注；其余五类暂不自动询价（显示"未计价"，由你按市场价补充）</li>
+                    <li>定额名称中 <span class="tag tag-infer">推</span> 标记表示编号在官方子目区间内按截面/芯数/管径/宽度就近推算，请导出后对照2020预算基价第二册子目表核对；选择「广联达 / 建经科技」格式导出</li>
                 </ul>
             </div>
 
@@ -86,17 +101,17 @@
 
             <div class="upload-area" id="uploadArea">
                 <div class="upload-icon">📁</div>
-                <div class="upload-text">点击上传或拖拽电缆工程量清单到此处</div>
-                <div class="upload-hint">支持 .xlsx、.xls 格式</div>
+                <div class="upload-text">点击上传或拖拽工程量清单到此处</div>
+                <div class="upload-hint">支持 .xlsx、.xls 格式（电缆 / 电缆头 / 配管 / 配线 / 桥架）</div>
                 <input type="file" id="excelFile" accept=".xlsx,.xls">
             </div>
 
             <div class="status-bar" id="statusBar"></div>
 
             <div class="summary" id="summaryArea" style="display:none;">
-                <div class="summary-card"><div class="number" id="totalCount">0</div><div class="label">电缆总数（条）</div></div>
-                <div class="summary-card"><div class="number" id="cuCount">0</div><div class="label">铜芯电缆</div></div>
-                <div class="summary-card"><div class="number" id="alCount">0</div><div class="label">铝芯电缆</div></div>
+                <div class="summary-card"><div class="number" id="totalCount">0</div><div class="label">项目总数（条）</div></div>
+                <div class="summary-card"><div class="number" id="catPower">0</div><div class="label">电力电缆</div></div>
+                <div class="summary-card teal2"><div class="number" id="catOther">0</div><div class="label">其他五类</div></div>
                 <div class="summary-card amber"><div class="number" id="pendingCount">0</div><div class="label">待录入价格</div></div>
                 <div class="summary-card"><div class="number" id="totalPrice">¥0</div><div class="label">主材费合计（元）</div></div>
             </div>
@@ -108,7 +123,7 @@
 
             <div class="result-area" id="resultArea" style="display:none;">
                 <div class="result-header"><h2>📊 组价结果预览</h2></div>
-                <p class="legend">说明：「估算」=信息价缺该规格，按相邻截面价格水平估算；「待录入」=当前期号价格库暂无数据；⚠️黄色行请人工核对。</p>
+                <p class="legend">说明：「估算」=信息价缺规格按相邻截面估算；「待录入」=当前期号无该规格；「未计价」=控制缆/电缆头/配管/配线/桥架暂不自动询价；<span class="tag tag-infer">推</span>=定额编号区间内推算需核对基价表；⚠️黄色行请人工核对。配管/配线请在"敷设方式"列选择后再导出。</p>
                 <div class="table-container">
                     <table id="resultTable">
                         <thead>
@@ -116,14 +131,13 @@
                                 <th>序号</th>
                                 <th>清单编码</th>
                                 <th>项目名称</th>
-                                <th>材质</th>
+                                <th>敷设方式</th>
                                 <th>型号</th>
                                 <th>规格</th>
-                                <th>电压</th>
                                 <th>主截面<br>(mm²)</th>
                                 <th>定额编码</th>
                                 <th>定额名称</th>
-                                <th>主材单价(元/m)</th>
+                                <th>主材单价</th>
                                 <th>工程量</th>
                                 <th>核对提示</th>
                             </tr>
