@@ -109,8 +109,8 @@
     if (/控制电缆|KVV|DJYP|KYJV|KGV|计算机电缆/.test(name)) return 'control';
     if (/桥架|线槽/.test(name)) return 'bridge';
     // 配线：多芯软导线型号 / 单芯电线型号(BV,BYJ,ZR-BV…) / 配线·穿线·导线关键词
-    if (/RYS|RYJS|KYJY|KYY|多芯软导线/.test(name)) return 'wiring';
-    if (/(?:^|[^A-Za-z])(?:WDZN?[ABCDE]?|ZN|Z[ABC]?|ZR|NH)?[-\s]?(?:BVVB|BV|BYJ|BVR)(?:[^A-Za-z]|$)/i.test(name)) return 'wiring';
+    if (/RYS|RYJS|RVS|KYJY|KYY|多芯软导线/.test(name)) return 'wiring';
+    if (/(?:^|[^A-Za-z])(?:WDZN?[ABCDE]?|ZN|Z[ABC]?|ZR|NH)?[-\s]?(?:BVVB|BVR|BYJ|BV)(?:[^A-Za-z]|$)/i.test(name)) return 'wiring';
     if (/配线|管内穿线|导线|穿线/.test(name)) return 'wiring';
     // 配管：JDG/KBG/电线管/镀锌钢管/焊接钢管，或独立的 SC/RC 代号
     if (/JDG|KBG|电线管|镀锌钢管|焊接钢管|配管/.test(name)) return 'conduit';
@@ -122,7 +122,7 @@
     return '';
   }
   // 配线更精确的型号判定（供 classify 与特征共用）
-  function isSoftWire(name) { return /RYS|KYJY|KYY|多芯软导线/.test(name); }
+  function isSoftWire(name) { return /RYS|RYJS|RVS|KYJY|KYY|多芯软导线/.test(name); }
   function isWireKw(name) { return /配线|穿线|BV|BYJ|RYS|KYJY|KYY|导线/.test(name); }
 
   // ---------- 材质（铜/铝）----------
@@ -213,7 +213,7 @@
   function parseWireSection(name, specInfo) {
     if (specInfo.section !== null) return specInfo.section; // n×s 形式
     var probe = name.replace(VOLT_RE, ' ');
-    var m = probe.match(/(?:BV|BYJ|BVVB|RVS|RYJS|KYJY|KYY)[^0-9]{0,4}(\d+(?:\.\d+)?)/i);
+    var m = probe.match(/(?:BVVB|BVR|BYJ|RVS|RYJS|RYS|KYJY|KYY|BV)[^0-9]{0,4}(\d+(?:\.\d+)?)/i);
     if (m) return parseFloat(m[1]);
     var m2 = probe.match(/(\d+(?:\.\d+)?)\s*mm2/i);
     return m2 ? parseFloat(m2[1]) : null;
@@ -222,6 +222,23 @@
     if (specInfo.totalCores > 0) return specInfo.totalCores;
     var m = name.match(/(二|两|三|四|五|六|七|八|九|十|零)?\s*芯/);
     return 0;
+  }
+
+  // ---------- 电缆头：主截面 ----------
+  // 兼容："电缆头 截面150mm"、"终端头 50mm²"、"YJV-4×70"、"3*70电缆头" 等
+  function parseHeadSection(name, specInfo) {
+    if (specInfo.section !== null && specInfo.section > 0) return specInfo.section; // n×s 形式已解析
+    var probe = name.replace(VOLT_RE, ' ');
+    // ① 明确"截面xx"（mm 或 mm² 或平方，可有可无）
+    var m1 = probe.match(/截面\s*(\d+(?:\.\d+)?)/);
+    if (m1) return parseFloat(m1[1]);
+    // ② 独立数字 + mm/mm²/平方（≥10，排除DN/年份等）
+    var m2 = probe.match(/(\d{2,3}(?:\.\d+)?)\s*(?:mm2|mm²|㎟|平方|mm)/i);
+    if (m2) return parseFloat(m2[1]);
+    // ③ n*s / n×s 形式（parseSpec 未覆盖时的兜底，如 3*70）
+    var m3 = probe.match(/\d+\s*[xX×*]\s*(\d{2,3}(?:\.\d+)?)/);
+    if (m3) return parseFloat(m3[1]);
+    return null;
   }
 
   // ---------- 配管：公称直径 DN ----------
@@ -241,14 +258,16 @@
     return tiers.length - 1;
   }
 
-  // ---------- 桥架：宽度（宽×高 取宽）----------
-  function parseBridgeWidth(name) {
-    var m = name.match(/(\d{3,4})\s*[×xX*]\s*\d{2,4}/);
-    if (m) return parseInt(m[1], 10);
+  // ---------- 桥架：宽度/高度（宽×高）----------
+  function parseBridgeWH(name) {
+    var m = name.match(/(\d{3,4})\s*[×xX*]\s*(\d{2,4})/);
+    if (m) return { w: parseInt(m[1], 10), h: parseInt(m[2], 10) };
     var m2 = name.match(/(?:宽|宽度|W[=\s]?)(\d{3,4})/);
-    if (m2) return parseInt(m2[1], 10);
-    return null;
+    if (m2) return { w: parseInt(m2[1], 10), h: null };
+    return { w: null, h: null };
   }
+  function parseBridgeWidth(name) { return parseBridgeWH(name).w; }
+  function parseBridgeHeight(name) { return parseBridgeWH(name).h; }
 
   // ============================================================
   // 定额匹配（按类别 + 行内选择状态）
@@ -465,6 +484,133 @@
   }
 
   // ============================================================
+  // 电气材料信息价（配管/配线/桥架）——天津当月信息价，data/prices.js → period.elec
+  // 有信息价读信息价(official)；规格无对应档时按相邻档插值估算(estimated)
+  // ============================================================
+  function elecTable(periodKey) {
+    var p = getPeriod(periodKey);
+    return (p && p.elec) || null;
+  }
+  // 在 {规格键:单价} 升序表中精确取值；无精确档则相邻档线性插值，越界取端档
+  function interpByKey(table, key) {
+    var keys = Object.keys(table).map(Number).filter(function (n) { return !isNaN(n); })
+      .sort(function (a, b) { return a - b; });
+    if (!keys.length) return null;
+    key = Number(key);
+    if (table[key] !== undefined) return { price: table[key], exact: true };
+    var lower = null, upper = null;
+    keys.forEach(function (k) {
+      if (k < key) lower = k;
+      if (k > key && upper === null) upper = k;
+    });
+    if (lower !== null && upper !== null) {
+      var v = table[lower] + (table[upper] - table[lower]) * (key - lower) / (upper - lower);
+      return { price: Math.round(v * 100) / 100, exact: false, lo: lower, hi: upper };
+    }
+    var pick = (lower !== null) ? lower : upper;
+    return { price: table[pick], exact: false, clamp: pick };
+  }
+
+  function periodLabel(periodKey) {
+    var p = getPeriod(periodKey);
+    return (p.releaseLabel || p.period || '');
+  }
+  function lookupElecPrice(periodKey, it) {
+    var e = elecTable(periodKey);
+    if (!e) return null;
+    var info = periodLabel(periodKey);
+    // ---------- 配管 ----------
+    if (it.category === 'conduit') {
+      if (it.diameter === null) return null;
+      if (it.conduitSteel) {
+        if (!e.steelConduit) return null;
+        var r = interpByKey(e.steelConduit, it.diameter);
+        if (!r) return null;
+        if (r.exact) return { price: r.price, source: 'official', basis: '天津' + info + '信息价 镀锌焊接钢管SC DN' + it.diameter + '（吨价×GB/T3091理论重量换算，除税）' };
+        if (r.clamp !== undefined) return { price: r.price, source: 'estimated', basis: 'SC DN' + it.diameter + '无信息价档，按端档DN' + r.clamp + '信息价就近计，请人工复核' };
+        return { price: r.price, source: 'estimated', basis: 'SC DN' + it.diameter + '无信息价档，按DN' + r.lo + '与DN' + r.hi + '信息价插值估算，请人工复核' };
+      }
+      if (!e.jdgConduit) return null;
+      var rj = interpByKey(e.jdgConduit, it.diameter);
+      if (!rj) return null;
+      if (rj.exact) return { price: rj.price, source: 'official', basis: '天津' + info + '信息价 KBG/JDG电线管 DN' + it.diameter + '（JDG与KBG同价，除税）' };
+      if (rj.clamp !== undefined) return { price: rj.price, source: 'estimated', basis: 'JDG/KBG DN' + it.diameter + '无信息价档，按端档DN' + rj.clamp + '信息价就近计，请人工复核' };
+      return { price: rj.price, source: 'estimated', basis: 'JDG/KBG DN' + it.diameter + '无信息价档，按DN' + rj.lo + '与DN' + rj.hi + '信息价插值估算，请人工复核' };
+    }
+    // ---------- 配线 ----------
+    if (it.category === 'wiring') {
+      if (it.softWire) {
+        // RYS/RVS 等双绞/多芯软线：信息价有 RVS(2芯) 按截面；其他多芯软线暂参考市场价
+        if (it.wireModel === 'RVS' && e.rvsWire && it.section !== null) {
+          var rr = interpByKey(e.rvsWire, it.section);
+          if (rr) {
+            if (rr.exact) return { price: rr.price, source: 'official', basis: '天津' + info + '信息价 RVS 2×' + it.section + ' 铜芯双绞软线（除税）' };
+            return { price: rr.price, source: 'estimated', basis: 'RVS 2×' + it.section + '无信息价档，按相邻档插值估算，请人工复核' };
+          }
+        }
+        return null; // KYJY/KYY/RYS 等多芯软导线信息价缺，暂不自动计价（市场价人工询价）
+      }
+      if (it.section === null) return null;
+      var model = it.wireModel;
+      // BYJ 无独立信息价 → 参照同截面 BV 信息价（交联线略贵，按BV价保守计并标注）
+      var table = null, famLabel = '';
+      if (model === 'BVR' && e.bvrWire) { table = e.bvrWire; famLabel = 'BVR'; }
+      else if (e.bvWire) { table = e.bvWire; famLabel = (model === 'BYJ') ? 'BV(BYJ参照)' : 'BV'; }
+      if (!table) return null;
+      var rw = interpByKey(table, it.section);
+      if (!rw) return null;
+      var tag = (model === 'BVR') ? 'BVR' : 'BV';
+      if (rw.exact) {
+        if (model === 'BYJ') return { price: rw.price, source: 'estimated', basis: 'BYJ ' + it.section + 'mm²无独立信息价，参照同截面BV信息价计（交联聚乙烯线，建议人工复核）' };
+        return { price: rw.price, source: 'official', basis: '天津' + info + '信息价 ' + tag + ' ' + it.section + 'mm² 铜芯塑料线（除税）' };
+      }
+      return { price: rw.price, source: 'estimated', basis: tag + ' ' + it.section + 'mm²无信息价档，按相邻档插值估算，请人工复核' };
+    }
+    // ---------- 桥架 ----------
+    if (it.category === 'bridge') {
+      if (it.bridgeWidth === null || !e.bridge) return null;
+      var w = it.bridgeWidth, h = it.bridgeHeight;
+      // 精确 宽x高
+      if (h !== null && e.bridge[w + 'x' + h] !== undefined) {
+        return { price: e.bridge[w + 'x' + h], source: 'official', basis: '天津' + info + '信息价 钢制槽式电缆桥架 ' + w + '×' + h + '（除税）' };
+      }
+      // 同宽度内取高度最接近（或该宽仅一档）
+      var sameW = Object.keys(e.bridge).filter(function (k) { return parseInt(k, 10) === w; });
+      if (sameW.length) {
+        var bestK = sameW[0], bestDiff = Infinity;
+        sameW.forEach(function (k) {
+          var kh = parseInt(k.split('x')[1], 10);
+          var diff = (h === null) ? 0 : Math.abs(kh - h);
+          if (diff < bestDiff) { bestDiff = diff; bestK = k; }
+        });
+        var exactH = (h !== null && bestDiff === 0);
+        return {
+          price: e.bridge[bestK],
+          source: exactH ? 'official' : 'estimated',
+          basis: exactH
+            ? '天津' + info + '信息价 钢制槽式电缆桥架 ' + bestK + '（除税）'
+            : '桥架 ' + w + (h ? '×' + h : '') + ' 无完全对应信息价，按同宽规格 ' + bestK + ' 信息价' + (h ? '就近' : '') + '计，请人工复核'
+        };
+      }
+      // 无同宽：按宽度最接近档（取其首档高度）
+      var widths = {};
+      Object.keys(e.bridge).forEach(function (k) {
+        var kw = parseInt(k, 10), kh = parseInt(k.split('x')[1], 10);
+        if (widths[kw] === undefined || kh < widths[kw].h) widths[kw] = { h: kh, k: k };
+      });
+      var wkeys = Object.keys(widths).map(Number).sort(function (a, b) { return a - b; });
+      var bw = wkeys[0];
+      wkeys.forEach(function (kw) { if (Math.abs(kw - w) < Math.abs(bw - w)) bw = kw; });
+      return {
+        price: e.bridge[widths[bw].k],
+        source: 'estimated',
+        basis: '桥架宽' + w + '无信息价档，按最接近宽度 ' + widths[bw].k + ' 信息价就近估算，请人工复核'
+      };
+    }
+    return null;
+  }
+
+  // ============================================================
   // 项目特征
   // ============================================================
   var CAT_LABEL = {
@@ -519,7 +665,8 @@
       voltage: extractVoltage(name),
       highVoltage: isHighVoltage(name),
       spec: '', cores: '', totalCores: 0, section: null,
-      diameter: null, bridgeWidth: null, softCores: 0, softWire: false,
+      diameter: null, bridgeWidth: null, bridgeHeight: null,
+      conduitSteel: false, wireModel: '', softCores: 0, softWire: false,
       layMode: 'surface',       // 配管默认明敷，用户可改
       wireType: 'lighting',     // 配线默认照明，用户可改
       listCode: LIST[category]
@@ -531,11 +678,24 @@
     it.totalCores = specInfo.totalCores;
     it.section = specInfo.section;
 
-    if (category === 'conduit') it.diameter = parseDiameter(name);
-    if (category === 'bridge') it.bridgeWidth = parseBridgeWidth(name);
+    if (category === 'conduit') {
+      it.diameter = parseDiameter(name);
+      it.conduitSteel = conduitIsSteel(name);
+    }
+    if (category === 'bridge') {
+      var wh = parseBridgeWH(name);
+      it.bridgeWidth = wh.w;
+      it.bridgeHeight = wh.h;
+    }
+    if (category === 'head') {
+      it.section = parseHeadSection(name, specInfo);
+      if (it.section !== null) it.spec = '1×' + it.section;
+    }
     if (category === 'wiring') {
       it.softWire = isSoftWire(name);
       it.section = parseWireSection(name, specInfo);
+      var wm = name.match(/(BVVB|BVR|BYJ|RVS|RYJS|RYS|KYJY|KYY|BV)/i);
+      it.wireModel = wm ? wm[1].toUpperCase() : '';
       it.softCores = it.softWire ? (specInfo.totalCores || parseSoftCores(name, specInfo)) : 0;
     }
     return it;
@@ -591,15 +751,22 @@
       it.warn = buildWarn(it, quota);
       if (it.qtyWarn) it.warn = (it.warn ? it.warn + '；' : '') + '工程量缺失，暂按1' + it.unit + '计请核对';
 
-      // 主材价：仅电力电缆接入价格库；控制电缆/电缆头/配管/配线/桥架暂不自动询价
+      // 主材价：电力电缆走电缆价格库；配管/配线/桥架走电气材料信息价；控制电缆/电缆头暂不自动询价
+      var priceInfo = null;
       if (it.category === 'power') {
-        var priceInfo = lookupPrice(periodKey, it.material, it.model, it.cores, it.section);
-        it.price = priceInfo ? priceInfo.price : null;
-        it.priceSource = priceInfo ? priceInfo.source : 'pending';
-        it.priceBasis = priceInfo ? priceInfo.basis : '';
+        priceInfo = lookupPrice(periodKey, it.material, it.model, it.cores, it.section);
+      } else if (it.category === 'conduit' || it.category === 'wiring' || it.category === 'bridge') {
+        priceInfo = lookupElecPrice(periodKey, it);
+      }
+      if (priceInfo) {
+        it.price = priceInfo.price;
+        it.priceSource = priceInfo.source;       // official | estimated
+        it.priceBasis = priceInfo.basis || '';
       } else {
         it.price = null;
-        it.priceSource = 'na';
+        // 该计价类但查不到价：配线软线等标"待询价"，其余（控制电缆/电缆头）标"未计价"
+        var pricedCats = { power: 1, conduit: 1, wiring: 1, bridge: 1 };
+        it.priceSource = pricedCats[it.category] ? 'pending' : 'na';
         it.priceBasis = '';
       }
 
@@ -622,11 +789,13 @@
   // ============================================================
   // 渲染
   // ============================================================
+  var PRICED_CATS = { power: 1, conduit: 1, wiring: 1, bridge: 1 };
   function priceText(item) {
-    if (item.category !== 'power') return '<span class="tag tag-na">未计价</span>';
-    if (item.price === null) return '<span class="tag tag-pending">待录入</span>';
-    if (item.priceSource === 'estimated') return '<span class="tag tag-est">估算</span> ¥' + item.price.toFixed(2);
-    return '¥' + item.price.toFixed(2);
+    if (!PRICED_CATS[item.category]) return '<span class="tag tag-na">未计价</span>';
+    if (item.price === null) return '<span class="tag tag-pending">待询价</span>';
+    var basisTip = item.priceBasis ? ' title="' + String(item.priceBasis).replace(/"/g, '&quot;') + '"' : '';
+    if (item.priceSource === 'estimated') return '<span class="tag tag-est" ' + basisTip + '>估</span> <span ' + basisTip + '>¥' + item.price.toFixed(2) + '</span>';
+    return '<span class="tag tag-info" ' + basisTip + '>信息价</span> <span ' + basisTip + '>¥' + item.price.toFixed(2) + '</span>';
   }
   function inferTag(it) {
     return it.codeInferred ? '<span class="tag tag-infer" title="定额编号为区间内按截面/芯数/管径/宽度就近推算，名称已按规则生成，请对照2020预算基价第二册子目表核对">推</span>' : '';
@@ -698,7 +867,7 @@
 
     var cat = {};
     data.forEach(function (d) { cat[d.category] = (cat[d.category] || 0) + 1; });
-    var pending = data.filter(function (d) { return d.category === 'power' && d.price === null; }).length;
+    var pending = data.filter(function (d) { return PRICED_CATS[d.category] && d.price === null; }).length;
     var total = data.reduce(function (s, d) { return s + (d.price === null ? 0 : d.price * d.quantity); }, 0);
 
     document.getElementById('totalCount').textContent = data.length;
@@ -754,7 +923,9 @@
 
     var zIdx = 0;
     data.forEach(function (it) {
-      var hasPrice = it.category === 'power';
+      // 凡有主材信息价的类别（电力电缆/配管/配线/桥架）均带主材单价并生成Z00741子目下设备行
+      var hasPrice = it.price !== null &&
+        (it.category === 'power' || it.category === 'conduit' || it.category === 'wiring' || it.category === 'bridge');
       var secVal = (it.section !== null && (it.category === 'power' || it.category === 'head' || it.category === 'control')) ? it.section : '';
       var specVal = specCell(it);
 
@@ -927,7 +1098,8 @@
       parseSpec: parseSpec, matchQuota: matchQuota, lookupPrice: lookupPrice, parseRows: parseRows,
       getPeriods: getPeriods, LIST_CODE: LIST_CODE, LIST: LIST, classify: classify,
       buildItem: buildItem, parseDiameter: parseDiameter, parseBridgeWidth: parseBridgeWidth,
-      isSoftWire: isSoftWire, recomputeQuota: recomputeQuota
+      isSoftWire: isSoftWire, recomputeQuota: recomputeQuota,
+      lookupElecPrice: lookupElecPrice, parseBridgeWH: parseBridgeWH
     };
   }
 })();

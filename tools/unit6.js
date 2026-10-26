@@ -109,5 +109,59 @@ console.log('== 行内切换重算 ==');
   it.layMode='concealed'; q=A.matchQuota(it); ck('切换后暗2-1124', q.code,'2-1124');
 }
 
+console.log('== 电缆头：截面xxmm 等非标名称（用户反馈bug回归）==');
+(function(){
+  const cases=[
+    ['电缆头 截面150mm','2-759'],['电缆头 截面50mm','2-757'],['电缆头 截面240mm²','2-760'],
+    ['冷缩电缆头 3*120','2-758'],['1kV户内热缩终端头 YJV-4×70','2-757'],
+    ['10kV高压电缆终端头 3×70','2-764'],['电缆头 截面400mm','2-762']
+  ];
+  cases.forEach(([n,code])=>ck(n+'→'+code, one(n).code, code));
+  ck('头截面150解析为150', one('电缆头 截面150mm').it.section, 150);
+})();
+
+console.log('== 电气材料信息价（天津2026年第9期，除税）==');
+(function(){
+  const P='2026-09';
+  function price(name){
+    const it=A.buildItem(name);
+    const pi=A.lookupElecPrice(P,it);
+    return pi?{v:pi.price,s:pi.source}:null;
+  }
+  function approx(desc, got, want){ ck(desc+'≈'+want, Math.abs(got-want)<0.011, true); }
+  // SC 镀锌钢管（吨价×理论重量换算米价）
+  approx('SC150=71.23', price('SC150镀锌钢管').v, 71.23);
+  approx('SC50=20.31', price('SC50镀锌钢管').v, 20.31);
+  approx('SC25=9.57', price('SC25镀锌钢管').v, 9.57);
+  ck('SC为信息价official', price('SC150镀锌钢管').s, 'official');
+  // JDG/KBG
+  approx('JDG25=10.93(同KBG)', price('JDG25').v, 10.93);
+  approx('KBG25=10.93', price('KBG25').v, 10.93);
+  approx('JDG20=6.35', price('JDG20').v, 6.35);
+  // BV/BVR 单芯电线
+  approx('BV2.5=2.46', price('BV-2.5').v, 2.46);
+  approx('BV4=3.81', price('BV-4').v, 3.81);
+  approx('BVR2.5=2.83', price('BVR-2.5').v, 2.83);
+  ck('BV取BV价不取BVR', Math.abs(price('BV-2.5').v-2.46)<0.011 && Math.abs(price('BV-2.5').v-2.83)>0.1, true);
+  ck('BV为信息价', price('BV-2.5').s, 'official');
+  // BYJ 无独立信息价 → 参照BV(estimated)
+  ck('BYJ2.5参照BV为估算', price('BYJ-2.5').s, 'estimated');
+  approx('BYJ2.5≈BV2.5', price('BYJ-2.5').v, 2.46);
+  // RVS 双绞软线信息价
+  approx('RVS2×1.5=3.70', price('RVS-2×1.5').v, 3.70);
+  ck('RVS为信息价', price('RVS-2×1.5').s, 'official');
+  // RYS 多芯软线无信息价 → null（待询价）
+  ck('RYS无信息价返回null', price('RYS-2×1.5'), null);
+  // 桥架 宽×高精确
+  approx('桥架400×200=233.87', price('电缆桥架 400×200').v, 233.87);
+  approx('桥架200×100=80.12', price('桥架200×100').v, 80.12);
+  ck('桥架400×200信息价', price('电缆桥架 400×200').s, 'official');
+  // 桥架无对应宽度 → 就近估算
+  ck('桥架250×100就近估算', price('桥架250×100').s, 'estimated');
+  // 控制电缆/电缆头不查电气价
+  ck('控制电缆不查电气价', A.lookupElecPrice(P, A.buildItem('KVV-7×1.5')), null);
+  ck('电缆头不查电气价', A.lookupElecPrice(P, A.buildItem('电缆头 截面150mm')), null);
+})();
+
 console.log('\n结果: ' + pass + ' 通过, ' + fail + ' 失败');
 process.exit(fail ? 1 : 0);

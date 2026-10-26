@@ -57,6 +57,7 @@
         .tag { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
         .tag-pending { background: #eee; color: #888; }
         .tag-est { background: #fdebd0; color: #9c6500; }
+        .tag-info { background: #e0f2f1; color: #00695c; cursor: help; }
         .tag-na { background: #eceff1; color: #607d8b; }
         .tag-infer { background: #e3f2fd; color: #1565c0; cursor: help; }
         .legend { font-size: 12px; color: #888; margin: 6px 0 0; }
@@ -82,7 +83,7 @@
                     <li>定额规则：电力电缆 铜2-576~580 / 铝2-566~570；控制电缆 2-586~590（6~48芯）；电缆头 1kV/10kV 户内热（冷）缩终端头；
                         电线管(JDG/KBG)明2-1117~1122·暗2-1123~1128、镀锌钢管(SC/RC)明2-1139~1149·暗2-1150~1160；
                         照明2-1318~1320、动力2-1335起、多芯软线2-1359起；钢制槽式桥架2-637~643</li>
-                    <li>电力电缆主材价取天津信息价<strong>中准价·除税价（元/m）</strong>，缺规格自动就近估算并标注；其余五类暂不自动询价（显示"未计价"，由你按市场价补充）</li>
+                    <li>主材价取天津当月信息价<strong>中准价·除税价（元/m）</strong>：电力电缆、SC镀锌钢管、JDG/KBG电线管、BV/BVR/RVS电线、钢制桥架均已接入<strong>2026年第9期</strong>信息价；缺规格自动就近插值并标"估"，BYJ参照BV、JDG同KBG、桥架按宽×高匹配；控制电缆与电缆头暂不自动询价</li>
                     <li>定额名称中 <span class="tag tag-infer">推</span> 标记表示编号在官方子目区间内按截面/芯数/管径/宽度就近推算，请导出后对照2020预算基价第二册子目表核对；选择「广联达 / 建经科技」格式导出</li>
                 </ul>
             </div>
@@ -112,7 +113,7 @@
                 <div class="summary-card"><div class="number" id="totalCount">0</div><div class="label">项目总数（条）</div></div>
                 <div class="summary-card"><div class="number" id="catPower">0</div><div class="label">电力电缆</div></div>
                 <div class="summary-card teal2"><div class="number" id="catOther">0</div><div class="label">其他五类</div></div>
-                <div class="summary-card amber"><div class="number" id="pendingCount">0</div><div class="label">待录入价格</div></div>
+                <div class="summary-card amber"><div class="number" id="pendingCount">0</div><div class="label">待询价</div></div>
                 <div class="summary-card"><div class="number" id="totalPrice">¥0</div><div class="label">主材费合计（元）</div></div>
             </div>
 
@@ -123,7 +124,7 @@
 
             <div class="result-area" id="resultArea" style="display:none;">
                 <div class="result-header"><h2>📊 组价结果预览</h2></div>
-                <p class="legend">说明：「估算」=信息价缺规格按相邻截面估算；「待录入」=当前期号无该规格；「未计价」=控制缆/电缆头/配管/配线/桥架暂不自动询价；<span class="tag tag-infer">推</span>=定额编号区间内推算需核对基价表；⚠️黄色行请人工核对。配管/配线请在"敷设方式"列选择后再导出。</p>
+                <p class="legend">说明：<span class="tag tag-info">信息价</span>=天津2026年第9期信息价除税价；<span class="tag tag-est">估</span>=信息价无该规格按相邻档插值/同宽就近估算（鼠标悬停看依据，请核对）；<span class="tag tag-pending">待询价</span>=无信息价需按市场价补；<span class="tag tag-na">未计价</span>=控制电缆/电缆头暂不自动询价；<span class="tag tag-infer">推</span>=定额编号区间内推算需核对基价表；⚠️黄色行请人工核对。配管/配线请在"敷设方式"列选择后再导出。</p>
                 <div class="table-container">
                     <table id="resultTable">
                         <thead>
