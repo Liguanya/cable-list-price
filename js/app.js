@@ -31,7 +31,14 @@
     head: '030409003',
     conduit: '030412001',
     bridge: '030412003',
-    wiring: '030412004'
+    wiring: '030412004',
+    // 照明器具（2025指引 附录D 灯具+插座）
+    lampCommon: '030413001',  // 普通灯
+    lampDecor: '030413002',   // 装饰灯
+    lampFluor: '030413003',   // 荧光灯
+    lampFactory: '030413005', // 工厂灯
+    lampMedical: '030413007', // 医疗专用灯
+    outlet: '030413014'       // 插座
   };
   var LIST_CODE = LIST.power; // 向后兼容（Node测试）
 
@@ -100,11 +107,141 @@
   var BRIDGE_W = [150, 300, 400, 500, 600, 800, 1500];
   var BRIDGE_CODE0 = 637;
 
+  /* ============================================================
+   * 照明器具（依据 DBD29-302-2020 第二册 第十三章 照明器具安装，子目名称/编号
+   *           已对照中国建筑出版在线官方电子书逐页核准）
+   * ----------------------------------------------------------
+   * 普通灯具：吸顶灯具按灯罩周长（mm）
+   *   2-1539 800以内 | 2-1540 1100以内 | 2-1541 1100以外
+   * 其他普通灯具（固定子目）：
+   *   2-1542 软线吊灯 | 2-1543 吊链灯 | 2-1544 防水吊灯
+   *   2-1545 普通弯脖灯 | 2-1546 普通壁灯 | 2-1547 防水灯头 | 2-1548 座灯头
+   * 工厂灯及防水防尘灯：
+   *   工厂罩灯 2-1549 吸顶式 / 1550 弯杆式 / 1551 悬挂式 / 1552 吊管式 / 1553 吊链式
+   *   防水防尘灯 2-1554 直杆式 / 1555 弯杆式 / 1556 吸顶式
+   * 工厂其他灯具：投光灯 2-1560；混光灯 2-1561 吊杆/1562 吊链/1563 嵌入式
+   *   密闭灯 安全灯 2-1570 直杆/1571 弯杆；防爆灯 2-1572 直杆/1573 弯杆
+   *   高压水银防爆灯 2-1574 直杆/1575 弯杆；防爆荧光灯 2-1576
+   * 荧光灯具安装：
+   *   组装型 2-1761~1763 吊链式 单/双/三管；2-1764~1766 吸顶式 单/双/三管
+   *   成套型 2-1768~1770 吊链式 单/双/三管；2-1771~1773 吊管式 单/双/三管；
+   *          2-1774~1776 吸顶式 单/双/三管；2-1777~1780 嵌入式 单/双/三/四管
+   * 医院灯具：2-1783 病房指示灯 / 1784 病房暗脚灯 / 1785 紫外线杀菌灯 / 1786 无影灯(吊装)
+   * ============================================================ */
+  // 吸顶灯具：灯罩周长 mm 上限
+  var LAMP_CEIL_PERIM = [800, 1100, Infinity];
+  var LAMP_CEIL_CODES = ['2-1539', '2-1540', '2-1541'];
+  // 其他普通灯具（关键字 → 固定子目）
+  // 注意：更具体的"座灯头"必须排在泛化的"灯头"之前
+  var LAMP_PLAIN = [
+    { re: /软线吊灯/, code: '2-1542', name: '其他普通灯具安装 软线吊灯' },
+    { re: /吊链灯/, code: '2-1543', name: '其他普通灯具安装 吊链灯' },
+    { re: /防水吊灯|防水吊线灯/, code: '2-1544', name: '其他普通灯具安装 防水吊灯' },
+    { re: /弯脖灯|弯脖子灯|普通弯脖/, code: '2-1545', name: '其他普通灯具安装 普通弯脖灯' },
+    { re: /普通壁灯|一般壁灯|壁灯/, code: '2-1546', name: '其他普通灯具安装 普通壁灯' },
+    { re: /座灯头|普通座灯/, code: '2-1548', name: '其他普通灯具安装 座灯头' },
+    { re: /声光控灯头|声光控|防水灯头|灯头/, code: '2-1547', name: '其他普通灯具安装 防水灯头' }
+  ];
+  // 工厂灯（按安装方式 + 灯型）。方式→工厂罩灯/防水防尘灯编号
+  var LAMP_FACTORY_HOOD = { top: '2-1549', bend: '2-1550', hang: '2-1551', pipe: '2-1552', chain: '2-1553' };
+  var LAMP_FACTORY_WP = { top: '2-1556', bend: '2-1555', hang: '2-1554', pipe: '2-1554', chain: '2-1554' };
+  var LAMP_FACTORY_HOOD_NAME = { top: '吸顶式', bend: '弯杆式', hang: '悬挂式', pipe: '吊管式', chain: '吊链式' };
+  var LAMP_FACTORY_WP_NAME = { top: '吸顶式', bend: '弯杆式', hang: '直杆式', pipe: '直杆式', chain: '直杆式' };
+  // 固定子目工厂/密闭/投光混光
+  var LAMP_FACTORY_FIXED = [
+    { re: /投光灯/, code: '2-1560', name: '工厂其他灯具安装 投光灯' },
+    { re: /混光灯/, code: '2-1561', name: '工厂其他灯具安装 混光灯 吊杆式' },
+    { re: /防爆荧光/, code: '2-1576', name: '密闭灯具安装 防爆荧光灯' },
+    { re: /高压水银/, code: '2-1572', name: '密闭灯具安装 高压水银防爆灯 直杆式' },
+    { re: /防爆灯/, code: '2-1572', name: '密闭灯具安装 防爆灯 直杆式' },
+    { re: /安全灯/, code: '2-1570', name: '密闭灯具安装 安全灯 直杆式' }
+  ];
+  // 荧光灯具：组装/成套 × 安装方式 × 管数 → 编号
+  // 组装型仅 吊链/吸顶，各1~3管；成套型方式全（吊链/吊管/吸顶/嵌入），嵌入有4管
+  var FLUOR_GRID = {
+    assembled: { chain: [1761, 1762, 1763], top: [1764, 1765, 1766] },
+    complete: {
+      chain: [1768, 1769, 1770], pipe: [1771, 1772, 1773],
+      top: [1774, 1775, 1776], embed: [1777, 1778, 1779, 1780]
+    }
+  };
+  var FLUOR_MOUNT_NAME = { chain: '吊链式', pipe: '吊管式', top: '吸顶式', embed: '嵌入式' };
+  var FLUOR_TUBE_CN = { 1: '单管', 2: '双管', 3: '三管', 4: '四管' };
+  // 医院灯具
+  var LAMP_MEDICAL = [
+    { re: /无影灯|手术灯/, code: '2-1786', name: '医院灯具安装 无影灯（吊装灯）' },
+    { re: /病房指示|指示灯(?!.*疏散)/, code: '2-1783', name: '医院灯具安装 病房指示灯' },
+    { re: /病房暗脚|暗脚灯|病房专用|病房灯/, code: '2-1784', name: '医院灯具安装 病房暗脚灯' },
+    { re: /观片灯/, code: '2-1784', name: '医院灯具安装 病房暗脚灯' },
+    { re: /紫外线|消毒灯|杀菌灯/, code: '2-1785', name: '医院灯具安装 紫外线杀菌灯' }
+  ];
+
+  /* ============================================================
+   * 插座（DBD29-302-2020 第十三章 九、开关按钮插座安装·3插座 / 4防爆插座）
+   * 普通插座（成套插座安装）：
+   *   单相明插座15A：2孔~12孔 2-1817~1826（11档：2/3/4/5/6/7/8/9/10/11/12孔）
+   *   单相明插座30A：3孔 2-1827 / 4孔 2-1828
+   *   三相明插座15A 4孔 2-1829；三相明插座30A 4孔 2-1830
+   *   单相暗插座15A：2孔~12孔 2-1831~1841（11档）
+   *   单相暗插座30A：3孔 2-1842 / 4孔 2-1843 / 5孔(?)→ 实际30A仅3/4孔 2-1842/1843（见下注）
+   *   三相暗插座15A 4孔 2-1845；三相暗插座30A 4孔 2-1846
+   * 防爆插座（电流档 15/30/60A以内）：
+   *   单相 2-1847/1848/1849；单相三孔 2-1850/1851/1852；三相四孔 2-1853/1854/1855
+   * 注：暗装单相30A 基价为3孔2-1842、4孔2-1843；2-1844为30A单相暗插座末档（按表确认）。
+   * ============================================================ */
+  // 明装15A：2~11孔=2-1817~1826（10档，基价表明装无12孔）；暗装15A：2~12孔=2-1831~1841（11档）
+  var OUT_HOLES_15A_SURFACE = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  var OUT_HOLES_15A_CONCEAL = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  // 普通插座编号矩阵（官方表逐档核准）
+  // 明装：单相15A 2~12孔=2-1817~1826；单相30A 3孔=2-1827、4孔=2-1828；三相15A 4孔=2-1829；三相30A 4孔=2-1830
+  var OUT_SURFACE_SINGLE15_CODE0 = 1817;
+  var OUT_SURFACE = { single30: { 3: '2-1827', 4: '2-1828' }, three15: '2-1829', three30: '2-1830' };
+  // 暗装：单相15A 2~12孔=2-1831~1841；单相30A 2孔=2-1842、3孔=2-1843；三相15A 4孔=2-1845；三相30A 4孔=2-1846
+  var OUT_CONCEAL_SINGLE15_CODE0 = 1831;
+  var OUT_CONCEAL = { single30: { 2: '2-1842', 3: '2-1843' }, three15: '2-1845', three30: '2-1846' };
+  // 防爆：电流档 15/30/60A以内。单相1847/48/49，单相三孔1850/51/52，三相四孔1853/54/55
+  var OUT_EX_AMP = [15, 30, 60];
+  var OUT_EX_CODE = {
+    single: [1847, 1848, 1849],
+    single3: [1850, 1851, 1852],
+    three: [1853, 1854, 1855]
+  };
+
   // ============================================================
   // 分类识别
   // ============================================================
+  // ---------- 灯具细分类（普通/装饰/荧光/工厂/医疗）----------
+  // 优先级：医疗 > 工厂 > 荧光 > 装饰 > 普通（兜底任何"灯"）
+  function classifyLamp(name) {
+    // 医疗专用灯
+    if (/无影灯|手术灯|观片灯|病房|紫外线|消毒灯|杀菌灯|医用灯/.test(name)) return 'lampMedical';
+    // 工厂灯及防水防尘灯 / 工厂其他灯具 / 密闭防爆
+    if (/防水防尘|工厂罩|工厂灯|工矿灯|厂房|高挂灯|密闭灯|投光灯|混光灯|防爆灯|防爆荧光|高压水银|安全灯|防潮灯/.test(name)) return 'lampFactory';
+    // 荧光灯（T5/T8支架、格栅荧光、LED平板/长条格栅、荧光支架/灯管）
+    if (/荧光灯|荧光支架|格栅|平板灯|支架灯|T\s*[58]\b|日光灯管?|灯管|嵌入式无主灯/.test(name)) {
+      // "嵌入式无主灯" 用户归装饰灯，单独前置（见装饰判定），故这里剔除
+      if (/无主灯/.test(name)) return 'lampDecor';
+      return 'lampFluor';
+    }
+    // 装饰灯
+    if (/筒灯|射灯|艺术|花灯|蜡烛灯|点光源|无主灯|标志灯|诱导灯|疏散|安全出口|装饰灯|挂片|串珠|吊式艺术|吸顶艺术|草坪灯|水下灯|几何形状/.test(name)) return 'lampDecor';
+    // 普通灯（含各类吸顶/吊灯/壁灯/灯头/座灯/弯脖/圆球/半圆/简易LED），以及其他含"灯"兜底
+    if (/灯|光源/.test(name)) return 'lampCommon';
+    return '';
+  }
+
+  function isOutlet(name) {
+    // 插座（含防爆插座）；排除"插座箱"（那是箱体设备）
+    return /插座/.test(name) && !/插座箱/.test(name);
+  }
+
   function classify(name) {
+    // 插座优先（独立器具）
+    if (isOutlet(name)) return 'outlet';
     if (/电缆头|终端头/.test(name)) return 'head';
+    // 灯具五类（在电缆/配线兜底之前）
+    var lampCat = classifyLamp(name);
+    if (lampCat) return lampCat;
     // 控制电缆：含明确控制型号或"控制电缆"字样
     if (/控制电缆|KVV|DJYP|KYJV|KGV|计算机电缆/.test(name)) return 'control';
     if (/桥架|线槽/.test(name)) return 'bridge';
@@ -123,6 +260,77 @@
   }
   // 配线更精确的型号判定（供 classify 与特征共用）
   function isSoftWire(name) { return /RYS|RYJS|RVS|KYJY|KYY|多芯软导线/.test(name); }
+
+  /* ================ 灯具 / 插座 解析 ================ */
+  var CN_NUM = { '一': 1, '二': 2, '两': 2, '双': 2, '三': 3, '四': 4, '单': 1 };
+
+  // 灯具方形/长方形尺寸（mm）：如 100*100、600×600、1200x300，返回周长mm
+  function parseLampPerimeter(name) {
+    var m = name.match(/(\d{2,4})\s*[xX×*]\s*(\d{2,4})/);
+    if (m) return (parseInt(m[1], 10) + parseInt(m[2], 10)) * 2;
+    var d = name.match(/[ΦφØ]?\s*(\d{2,4})\s*mm\s*(?:方形|正方形)/);
+    if (d) return parseInt(d[1], 10) * 4;
+    return null;
+  }
+  // 是否为LED平板灯（荧光灯清单、但按吸顶灯具周长套定额）
+  function isPanelLamp(name) { return /平板灯/.test(name) && !/长条|格栅|支架/.test(name); }
+  // 荧光灯管数
+  function parseFluorTubes(name) {
+    var m = name.match(/([一二两双三四单])\s*管/);
+    if (m && CN_NUM[m[1]]) return CN_NUM[m[1]];
+    if (/双管/.test(name)) return 2;
+    if (/三管/.test(name)) return 3;
+    if (/四管/.test(name)) return 4;
+    if (/单管/.test(name)) return 1;
+    return 1;
+  }
+  // 荧光灯安装方式：嵌入>吸顶>吊管>吊链
+  function parseFluorMount(name) {
+    if (/嵌入|嵌装|暗装在吊顶/.test(name)) return 'embed';
+    if (/吸顶/.test(name)) return 'top';
+    if (/吊管|吊杆/.test(name)) return 'pipe';
+    if (/吊链|吊式|吊装/.test(name)) return 'chain';
+    return 'chain'; // 默认吊链式
+  }
+  // 荧光灯组装/成套（默认成套）
+  function parseFluorKind(name) { return /组装型|组装/.test(name) ? 'assembled' : 'complete'; }
+
+  // 工厂灯安装方式：弯杆/悬挂(直杆)/吸顶
+  function parseFactoryMount(name) {
+    if (/弯管|弯杆/.test(name)) return 'bend';
+    if (/吸顶/.test(name)) return 'top';
+    if (/悬挂|吊链|吊装|吊杆|直杆|高挂|挂式/.test(name)) return 'hang';
+    return 'hang'; // 默认悬挂（按用户举例含"悬挂"）
+  }
+  // 是否防水防尘灯（决定工厂灯罩灯/防水防尘编号）
+  function isWaterproofFactory(name) { return /防水防尘|防水|防潮|防尘|密闭/.test(name); }
+
+  // 插座：防爆
+  function isOutletEx(name) { return /防爆/.test(name); }
+  // 插座：三相
+  function isOutletThree(name) { return /三相|3相|四线|四孔/.test(name); }
+  // 插座电流(A)
+  function parseOutletAmp(name) {
+    // 明确标注"30A/60A"才识别，避免把"12孔""15A"中的数字混淆；默认15A
+    if (/60\s*[aA]/.test(name)) return 60;
+    if (/30\s*[aA]/.test(name)) return 30;
+    if (/15\s*[aA]/.test(name)) return 15;
+    return 15;
+  }
+  // 插座孔数：中文"三孔/四孔/五孔"或"3孔/4孔"
+  function parseOutletHoles(name) {
+    // 先匹配纯阿拉伯数字（如 12孔），避免被中文"十"逻辑截断
+    var md = name.match(/(\d{1,2})\s*孔/);
+    if (md) return parseInt(md[1], 10);
+    var m = name.match(/([一二两双三四五六七八九十]+)\s*孔/);
+    if (!m) return null;
+    var s = m[1];
+    if (s === '十') return 10;
+    if (s.indexOf('十') === 0 && s.length === 2) return 10 + (CN_NUM[s[1]] || 0);
+    if (s.length === 2 && s[1] === '十') return (CN_NUM[s[0]] || 1) * 10;
+    if (CN_NUM[s]) return CN_NUM[s];
+    return null;
+  }
   function isWireKw(name) { return /配线|穿线|BV|BYJ|RYS|KYJY|KYY|导线/.test(name); }
 
   // ---------- 材质（铜/铝）----------
@@ -374,6 +582,142 @@
       };
     }
 
+    /* ---------- 灯具 ---------- */
+    if (it.category === 'lampCommon') {
+      var nm = it.name || '';
+      // 其他普通灯具固定子目（软线吊灯/吊链灯/防水吊灯/弯脖/壁灯/灯头/座灯头）
+      for (var pi = 0; pi < LAMP_PLAIN.length; pi++) {
+        if (LAMP_PLAIN[pi].re.test(nm)) {
+          return { code: LAMP_PLAIN[pi].code, name: LAMP_PLAIN[pi].name, inferred: false };
+        }
+      }
+      // 圆球/半圆吸顶灯、简易LED吸顶灯、普通吸顶灯 → 吸顶灯具按周长
+      var per = (it.lampPerimeter === null || it.lampPerimeter === undefined) ? 0 : it.lampPerimeter;
+      var ci2 = per <= 800 ? 0 : (per <= 1100 ? 1 : 2);
+      var perLabel = ci2 === 0 ? '800mm以内' : (ci2 === 1 ? '1100mm以内' : '1100mm以外');
+      return { code: LAMP_CEIL_CODES[ci2], name: '吸顶灯具安装 灯罩周长' + perLabel, inferred: false };
+    }
+
+    if (it.category === 'lampFluor') {
+      var fn = it.name || '';
+      // LED平板灯（方形/长方形）→ 荧光灯清单 + 吸顶灯具按周长定额
+      if (isPanelLamp(fn) || it.fluorPanel) {
+        var pp = it.lampPerimeter || 0;
+        var pci = pp <= 800 ? 0 : (pp <= 1100 ? 1 : 2);
+        var pLabel = pci === 0 ? '800mm以内' : (pci === 1 ? '1100mm以内' : '1100mm以外');
+        return { code: LAMP_CEIL_CODES[pci], name: '吸顶灯具安装（LED平板灯）灯罩周长' + pLabel, inferred: false };
+      }
+      // 管数 / 组装成套 / 安装方式（优先名称解析，行内选择可覆盖：it.fluorTubes/fluorKind/fluorMount）
+      var tubes = it.fluorTubes || parseFluorTubes(fn);
+      var kind = it.fluorKind || parseFluorKind(fn);
+      var mount = it.fluorMount || parseFluorMount(fn);
+      var ti2 = tubes - 1;
+      var gridRow = FLUOR_GRID[kind][mount];
+      var kindCn = kind === 'assembled' ? '组装型' : '成套型';
+      if (!gridRow) {
+        // 组装型无吊管/嵌入，回退到成套型
+        gridRow = FLUOR_GRID.complete[mount] || FLUOR_GRID.complete.chain;
+        kindCn = '成套型';
+      }
+      if (ti2 >= gridRow.length) ti2 = gridRow.length - 1; // 4管仅成套嵌入支持
+      if (tubes === 4 && !(kind === 'complete' && mount === 'embed')) {
+        // 非"成套嵌入式"无四管子目，回退成套嵌入
+        gridRow = FLUOR_GRID.complete.embed; ti2 = 3; kindCn = '成套型'; mount = 'embed';
+      }
+      return {
+        code: '2-' + gridRow[ti2],
+        name: '荧光灯具安装 ' + kindCn + ' ' + FLUOR_MOUNT_NAME[mount] + ' ' + (FLUOR_TUBE_CN[ti2 + 1] || (ti2 + 1) + '管'),
+        inferred: false
+      };
+    }
+
+    if (it.category === 'lampFactory') {
+      var ffn = it.name || '';
+      for (var fi = 0; fi < LAMP_FACTORY_FIXED.length; fi++) {
+        if (LAMP_FACTORY_FIXED[fi].re.test(ffn)) {
+          return { code: LAMP_FACTORY_FIXED[fi].code, name: LAMP_FACTORY_FIXED[fi].name, inferred: false };
+        }
+      }
+      var fmount = it.factoryMount || parseFactoryMount(ffn);
+      if (isWaterproofFactory(ffn) || it.factoryType === 'waterproof') {
+        return {
+          code: LAMP_FACTORY_WP[fmount],
+          name: '工厂灯及防水防尘灯安装 防水防尘灯 ' + LAMP_FACTORY_WP_NAME[fmount],
+          inferred: false
+        };
+      }
+      // 普通工厂罩灯（含厂房高挂工矿灯）
+      return {
+        code: LAMP_FACTORY_HOOD[fmount],
+        name: '工厂灯及防水防尘灯安装 工厂罩灯 ' + LAMP_FACTORY_HOOD_NAME[fmount],
+        inferred: false
+      };
+    }
+
+    if (it.category === 'lampMedical') {
+      var mn = it.name || '';
+      for (var mi = 0; mi < LAMP_MEDICAL.length; mi++) {
+        if (LAMP_MEDICAL[mi].re.test(mn)) {
+          return { code: LAMP_MEDICAL[mi].code, name: LAMP_MEDICAL[mi].name, inferred: false };
+        }
+      }
+      return { code: '2-1785', name: '医院灯具安装 紫外线杀菌灯', inferred: false };
+    }
+
+    /* ---------- 插座 ---------- */
+    if (it.category === 'outlet') {
+      var on = it.name || '';
+      var surface = (it.layMode === 'surface'); // 行内选择：明装/暗装
+      var amp = it.outAmp || parseOutletAmp(on);
+      var three = it.outThree !== undefined ? it.outThree : isOutletThree(on);
+      var holes = it.outHoles || parseOutletHoles(on);
+
+      // 防爆插座（不分明装暗装；电流档15/30/60）
+      if (isOutletEx(on)) {
+        var ai = amp <= 15 ? 0 : (amp <= 30 ? 1 : 2);
+        var exType = three ? 'three' : (/三孔/.test(on) && !/四孔/.test(on) ? 'single3' : 'single');
+        var exName = three ? '三相四孔' : (exType === 'single3' ? '单相三孔' : '单相');
+        var exCode = OUT_EX_CODE[exType][ai];
+        return {
+          code: '2-' + exCode,
+          name: '防爆插座安装 ' + exName + ' ' + OUT_EX_AMP[ai] + 'A以内',
+          inferred: false
+        };
+      }
+
+      // 三相插座（固定4孔，仅15/30A）
+      if (three) {
+        var is30t = amp >= 25;
+        if (surface) {
+          var sc = is30t ? OUT_SURFACE.three30 : OUT_SURFACE.three15;
+          return { code: sc, name: '三相明插座' + (is30t ? '30A' : '15A') + ' 4孔', inferred: false };
+        }
+        var cc = is30t ? OUT_CONCEAL.three30 : OUT_CONCEAL.three15;
+        return { code: cc, name: '三相暗插座' + (is30t ? '30A' : '15A') + ' 4孔', inferred: false };
+      }
+
+      // 单相插座
+      if (surface) {
+        if (amp === 30) {
+          var h30 = holes === 4 ? 4 : 3;
+          return { code: OUT_SURFACE.single30[h30], name: '单相明插座30A ' + h30 + '孔', inferred: false };
+        }
+        var hs = holes || 3;
+        var hsi = Math.max(0, Math.min(OUT_HOLES_15A_SURFACE.length - 1, hs - 2));
+        var realHs = OUT_HOLES_15A_SURFACE[hsi];
+        return { code: '2-' + (OUT_SURFACE_SINGLE15_CODE0 + hsi), name: '单相明插座15A ' + realHs + '孔', inferred: false };
+      }
+      // 暗装单相
+      if (amp === 30) {
+        var hc30 = holes === 2 ? 2 : 3;
+        return { code: OUT_CONCEAL.single30[hc30], name: '单相暗插座30A ' + hc30 + '孔', inferred: false };
+      }
+      var hc = holes || 3;
+      var hci = Math.max(0, Math.min(OUT_HOLES_15A_CONCEAL.length - 1, hc - 2));
+      var realHc = OUT_HOLES_15A_CONCEAL[hci];
+      return { code: '2-' + (OUT_CONCEAL_SINGLE15_CODE0 + hci), name: '单相暗插座15A ' + realHc + '孔', inferred: false };
+    }
+
     return { code: '', name: '', inferred: false };
   }
 
@@ -615,7 +959,9 @@
   // ============================================================
   var CAT_LABEL = {
     power: '电力电缆', control: '控制电缆', head: '电力电缆头',
-    conduit: '配管', wiring: '配线', bridge: '桥架'
+    conduit: '配管', wiring: '配线', bridge: '桥架',
+    lampCommon: '普通灯', lampDecor: '装饰灯', lampFluor: '荧光灯',
+    lampFactory: '工厂灯', lampMedical: '医疗专用灯', outlet: '插座'
   };
   var CAT_WORK = {
     power: '电缆敷设、电缆头制作安装及辅助工作',
@@ -623,9 +969,30 @@
     head: '电力电缆终端头制作、安装、接地、接线及辅助工作',
     conduit: '管路敷设、固定、接地连接及为完成该项所需的辅助工作',
     wiring: '管内穿线、接线、端子连接及辅助工作',
-    bridge: '桥架组对、安装、接地、附件安装及辅助工作'
+    bridge: '桥架组对、安装、接地、附件安装及辅助工作',
+    lampCommon: '灯具安装、接线、固定、试亮及辅助工作',
+    lampDecor: '装饰灯具安装、接线、固定、试亮及辅助工作',
+    lampFluor: '荧光灯具安装、接线、固定、试亮及辅助工作',
+    lampFactory: '工厂灯具安装、接线、固定、试亮及辅助工作',
+    lampMedical: '医院专用灯具安装、接线、固定、调试及辅助工作',
+    outlet: '测位画线、打眼、清扫盒子、装插座、接线、装盖及辅助工作'
   };
   function specText(it) {
+    // 灯具/插座：不套用电缆的 型号-电压-截面mm² 描述
+    if (/^lamp/.test(it.category)) {
+      var lp = [];
+      if (it.fluorPanel) lp.push('LED平板灯');
+      if (it.lampPerimeter) lp.push('灯罩周长' + it.lampPerimeter + 'mm');
+      if (it.category === 'lampFluor' && !it.fluorPanel) {
+        lp.push(FLUOR_TUBE_CN[it.fluorTubes || 1] + ' ' + (FLUOR_MOUNT_NAME[it.fluorMount] || ''));
+      }
+      return lp.join(' ');
+    }
+    if (it.category === 'outlet') {
+      return (it.outEx ? '防爆 ' : '') + (it.outThree ? '三相' : '单相') + ' ' + it.outAmp + 'A' +
+        (it.outHoles ? ' ' + it.outHoles + '孔' : (it.outThree ? ' 4孔' : '')) +
+        (it.layMode === 'concealed' ? ' 暗装' : ' 明装');
+    }
     var parts = [];
     if (it.model) parts.push(it.model);
     if (it.voltage) parts.push(it.voltage);
@@ -667,8 +1034,14 @@
       spec: '', cores: '', totalCores: 0, section: null,
       diameter: null, bridgeWidth: null, bridgeHeight: null,
       conduitSteel: false, wireModel: '', softCores: 0, softWire: false,
-      layMode: 'surface',       // 配管默认明敷，用户可改
+      layMode: 'surface',       // 配管明敷/暗敷；插座明装/暗装
       wireType: 'lighting',     // 配线默认照明，用户可改
+      // 灯具
+      lampPerimeter: null, fluorPanel: false,
+      fluorTubes: 0, fluorKind: '', fluorMount: '',
+      factoryMount: '', factoryType: '',
+      // 插座
+      outEx: false, outThree: false, outAmp: 15, outHoles: null,
       listCode: LIST[category]
     };
 
@@ -698,11 +1071,34 @@
       it.wireModel = wm ? wm[1].toUpperCase() : '';
       it.softCores = it.softWire ? (specInfo.totalCores || parseSoftCores(name, specInfo)) : 0;
     }
+    if (category === 'lampCommon' || category === 'lampFluor') {
+      it.lampPerimeter = parseLampPerimeter(name);
+      it.fluorPanel = isPanelLamp(name);
+      it.fluorTubes = parseFluorTubes(name);
+      it.fluorKind = parseFluorKind(name);
+      it.fluorMount = parseFluorMount(name);
+    }
+    if (category === 'lampFactory') {
+      it.factoryMount = parseFactoryMount(name);
+      it.factoryType = isWaterproofFactory(name) ? 'waterproof' : 'hood';
+    }
+    if (category === 'outlet') {
+      it.outEx = isOutletEx(name);
+      it.outThree = isOutletThree(name);
+      it.outAmp = parseOutletAmp(name);
+      it.outHoles = parseOutletHoles(name);
+      // 名称含"暗装/暗插"默认暗装，含"明"默认明装，否则默认明装（用户可改）
+      if (/暗装|暗插|暗插座/.test(name)) it.layMode = 'concealed';
+      else it.layMode = 'surface';
+    }
     return it;
   }
 
   function buildWarn(it, quota) {
     var w = [];
+    if (it.category === 'lampDecor' && !quota.code) {
+      w.push('装饰灯已套清单030413002；装饰灯具（筒灯/射灯/花灯/标志诱导灯等）安装子目差异大，请按2020基价第二册装饰灯具章节手选定额');
+    }
     if (quota.noTier) {
       if (it.category === 'control') w.push('未识别控制电缆芯数，请核对名称（如 KVV-7×1.5）');
       if (it.category === 'conduit') w.push('未识别配管公称直径(DN)，请核对名称（如 JDG20 / SC25）');
@@ -806,20 +1202,46 @@
     });
   }
 
-  // 敷设方式/线路 列：配管→明/暗下拉，配线→照明/动力(多芯软线置灰)，电缆/桥架→材质徽标
+  function opt(val, cur, label) {
+    return '<option value="' + val + '"' + (val === cur ? ' selected' : '') + '>' + label + '</option>';
+  }
+  function sel(act, idx, html, cls) {
+    return '<select class="cell-select' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-idx="' + idx + '">' + html + '</select>';
+  }
+
+  // 敷设方式/选型 列
   function layCell(it) {
     if (it.category === 'conduit') {
-      return '<select class="cell-select" data-act="lay" data-idx="' + it._i + '">' +
-        '<option value="surface"' + (it.layMode === 'surface' ? ' selected' : '') + '>明敷</option>' +
-        '<option value="concealed"' + (it.layMode === 'concealed' ? ' selected' : '') + '>暗敷</option>' +
-        '</select>';
+      return sel('lay', it._i, opt('surface', it.layMode, '明敷') + opt('concealed', it.layMode, '暗敷'));
     }
     if (it.category === 'wiring') {
       if (it.softWire) return '<span class="lay-static">多芯软导线</span>';
-      return '<select class="cell-select" data-act="wire" data-idx="' + it._i + '">' +
-        '<option value="lighting"' + (it.wireType === 'lighting' ? ' selected' : '') + '>照明线路</option>' +
-        '<option value="power"' + (it.wireType === 'power' ? ' selected' : '') + '>动力线路</option>' +
-        '</select>';
+      return sel('wire', it._i, opt('lighting', it.wireType, '照明线路') + opt('power', it.wireType, '动力线路'));
+    }
+    // 插座：明装/暗装（防爆不分明暗，显示固定徽标）
+    if (it.category === 'outlet') {
+      if (it.outEx) return '<span class="lay-static">防爆</span>';
+      return sel('lay', it._i, opt('surface', it.layMode, '明装') + opt('concealed', it.layMode, '暗装'), 'lay-outlet');
+    }
+    // 荧光灯：成套/组装 + 安装方式 + 管数（平板灯按周长，无下拉）
+    if (it.category === 'lampFluor' && !it.fluorPanel) {
+      var kindSel = sel('flKind', it._i,
+        opt('complete', it.fluorKind || 'complete', '成套型') + opt('assembled', it.fluorKind || '', '组装型'), 'lay-lamp');
+      var mountOpts = { chain: '吊链式', pipe: '吊管式', top: '吸顶式', embed: '嵌入式' };
+      var mh = '';
+      Object.keys(mountOpts).forEach(function (k) { mh += opt(k, it.fluorMount || 'chain', mountOpts[k]); });
+      var mountSel = sel('flMount', it._i, mh, 'lay-lamp');
+      var th = '';
+      [1, 2, 3, 4].forEach(function (t) { th += opt(String(t), String(it.fluorTubes || 1), (FLUOR_TUBE_CN[t])); });
+      var tubeSel = sel('flTube', it._i, th, 'lay-lamp');
+      return '<div class="lay-stack">' + kindSel + mountSel + tubeSel + '</div>';
+    }
+    // 工厂灯：吸顶/弯杆/悬挂 安装方式（防水防尘或工厂罩）
+    if (it.category === 'lampFactory' && /工厂罩|防水防尘|防水|防尘|防潮|工矿|厂房|高挂/.test(it.name)) {
+      var fm = { top: '吸顶式', bend: '弯杆式', hang: '悬挂式' };
+      var fh = '';
+      Object.keys(fm).forEach(function (k) { fh += opt(k, it.factoryMount || 'hang', fm[k]); });
+      return sel('facMount', it._i, fh, 'lay-lamp');
     }
     if (it.category === 'power' || it.category === 'control' || it.category === 'head') {
       return '<span class="mat-badge mat-' + it.material + '">' + it.material + '芯</span>';
@@ -837,6 +1259,18 @@
     }
     if (it.category === 'control') return escapeHtml(it.spec || '—') + (it.totalCores ? '（' + it.totalCores + '芯）' : '');
     if (it.category === 'head') return (it.highVoltage ? '10kV ' : '1kV ') + (it.section !== null ? it.section + 'mm²' : '');
+    // 灯具：普通吸顶/平板灯显示灯罩周长；荧光灯显示管数；插座显示相/电流/孔
+    if (/^lamp/.test(it.category)) {
+      if (it.category === 'lampFluor') {
+        if (it.fluorPanel) return it.lampPerimeter ? '周长' + it.lampPerimeter + 'mm' : '平板灯';
+        return FLUOR_TUBE_CN[it.fluorTubes || 1] + ' ' + (FLUOR_MOUNT_NAME[it.fluorMount] || '');
+      }
+      if ((it.category === 'lampCommon') && it.lampPerimeter) return '周长' + it.lampPerimeter + 'mm';
+      return '—';
+    }
+    if (it.category === 'outlet') {
+      return (it.outEx ? '防爆 ' : '') + (it.outThree ? '三相' : '单相') + ' ' + it.outAmp + 'A' + (it.outHoles ? ' ' + it.outHoles + '孔' : '');
+    }
     return escapeHtml(it.spec || '—');
   }
 
@@ -886,6 +1320,17 @@
         if (!it) return;
         if (act === 'lay') it.layMode = sel.value;
         if (act === 'wire') it.wireType = sel.value;
+        // 荧光灯：成套/组装、安装方式、管数
+        if (act === 'flKind') it.fluorKind = sel.value;
+        if (act === 'flMount') it.fluorMount = sel.value;
+        if (act === 'flTube') {
+          it.fluorTubes = parseInt(sel.value, 10);
+          // 组装型仅支持吊链/吸顶且最多3管，切换时做约束
+          if (it.fluorKind === 'assembled' && (it.fluorMount === 'pipe' || it.fluorMount === 'embed')) it.fluorKind = 'complete';
+          if (it.fluorKind === 'assembled' && it.fluorTubes > 3) it.fluorTubes = 3;
+        }
+        // 工厂灯：吸顶/弯杆/悬挂
+        if (act === 'facMount') it.factoryMount = sel.value;
         recomputeQuota(it);
         renderTable(data); // 重渲染保留选中值（已写回 it）
       });
@@ -1002,7 +1447,7 @@
       area.style.display = 'block';
       btn.style.display = 'flex';
       document.getElementById('statusBar').className = 'status-bar status-ok';
-      document.getElementById('statusBar').textContent = '成功解析 ' + exportData.length + ' 条（电缆/控制缆/电缆头/配管/配线/桥架），配管、配线请在表内选择敷设方式与线路类型；黄色行为需人工核对项';
+      document.getElementById('statusBar').textContent = '成功解析 ' + exportData.length + ' 条（电缆/控制缆/电缆头/配管/配线/桥架/灯具/插座）；请在"敷设方式/选型"列为配管、配线、插座、荧光灯、工厂灯选择对应选项；黄色行为需人工核对项';
     } else {
       area.style.display = 'none';
       btn.style.display = 'none';

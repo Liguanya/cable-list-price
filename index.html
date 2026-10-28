@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>电缆配管配线桥架自动组价系统</title>
+    <title>电缆配管配线桥架灯具插座自动组价系统</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         /* ===== 专属样式 ===== */
@@ -67,8 +67,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔌 电缆配管配线桥架自动组价系统</h1>
-            <p>天津2025清单计价规范 · Excel上传自动识别六大类并套清单定额 · 电力电缆主材价联动天津信息价 · 全部本地计算</p>
+            <h1>🔌 电缆配管配线桥架·灯具插座自动组价系统</h1>
+            <p>天津2025清单计价规范 · Excel上传自动识别电缆/配管/配线/桥架/灯具/插座并套清单定额 · 主材价联动天津信息价 · 全部本地计算</p>
         </div>
 
         <div class="content">
@@ -76,10 +76,14 @@
                 <h3>📋 使用说明</h3>
                 <ul>
                     <li>上传工程量清单 Excel（.xlsx/.xls）：<strong>A列=序号</strong>、<strong>B列=项目名称（型号/规格/截面）</strong>、<strong>C列=工程量</strong>，首行可为表头</li>
-                    <li>按项目名称自动识别六类并套清单：
+                    <li>按项目名称自动识别并套清单：
                         <strong>电力电缆 030409001</strong>、<strong>控制电缆 030409002</strong>、<strong>电力电缆头 030409003</strong>、
-                        <strong>配管 030412001</strong>、<strong>桥架 030412003</strong>、<strong>配线 030412004</strong></li>
-                    <li><strong>配管</strong>在结果表"敷设方式"列手动选<strong>明敷/暗敷</strong>；<strong>配线</strong>手动选<strong>照明线路/动力线路</strong>（多芯软导线自动识别）；切换后定额实时重算</li>
+                        <strong>配管 030412001</strong>、<strong>桥架 030412003</strong>、<strong>配线 030412004</strong>、
+                        <strong>普通灯 030413001</strong>、<strong>装饰灯 030413002</strong>、<strong>荧光灯 030413003</strong>、
+                        <strong>工厂灯 030413005</strong>、<strong>医疗专用灯 030413007</strong>、<strong>插座 030413014</strong></li>
+                    <li><strong>配管</strong>选<strong>明敷/暗敷</strong>；<strong>配线</strong>选<strong>照明/动力</strong>；<strong>插座</strong>选<strong>明装/暗装</strong>；<strong>荧光灯</strong>选成套/组装·安装方式·管数；<strong>工厂灯</strong>选吸顶/弯杆/悬挂；切换后定额实时重算</li>
+                    <li><strong>灯具定额</strong>：圆球/半圆/简易LED吸顶灯按灯罩周长套吸顶灯具2-1539(800内)/1540(1100内)/1541(1100外)；LED平板灯(如100×100→周长400)同套吸顶灯具；软线吊灯2-1542、吊链灯2-1543、普通弯脖灯2-1545、普通壁灯2-1546、座灯头2-1548、声光控灯头2-1547；荧光灯成套2-1768~1780/组装2-1761~1766；防水防尘灯2-1554直杆/1555弯杆/1556吸顶、工厂罩灯2-1549~1553、投光灯2-1560、防爆灯2-1572；医院灯2-1783~1786</li>
+                    <li><strong>插座定额</strong>：单相明15A 2~12孔2-1817~1826/暗15A 2-1831~1841，单相明30A 2-1827~1828/暗30A 2-1842~1843，三相明15/30A 2-1829/1830、暗2-1845/1846，防爆插座2-1847~1855（15/30/60A·单相/单相三孔/三相四孔）；相数·电流·孔数从名称识别（如"三相15A 4孔"）</li>
                     <li>定额规则：电力电缆 铜2-576~580 / 铝2-566~570；控制电缆 2-586~590（6~48芯）；电缆头 1kV/10kV 户内热（冷）缩终端头；
                         电线管(JDG/KBG)明2-1117~1122·暗2-1123~1128、镀锌钢管(SC/RC)明2-1139~1149·暗2-1150~1160；
                         照明2-1318~1320、动力2-1335起、多芯软线2-1359起；钢制槽式桥架2-637~643</li>
@@ -103,7 +107,7 @@
             <div class="upload-area" id="uploadArea">
                 <div class="upload-icon">📁</div>
                 <div class="upload-text">点击上传或拖拽工程量清单到此处</div>
-                <div class="upload-hint">支持 .xlsx、.xls 格式（电缆 / 电缆头 / 配管 / 配线 / 桥架）</div>
+                <div class="upload-hint">支持 .xlsx、.xls 格式（电缆 / 电缆头 / 配管 / 配线 / 桥架 / 灯具 / 插座）</div>
                 <input type="file" id="excelFile" accept=".xlsx,.xls">
             </div>
 
@@ -132,7 +136,7 @@
                                 <th>序号</th>
                                 <th>清单编码</th>
                                 <th>项目名称</th>
-                                <th>敷设方式</th>
+                                <th>敷设方式/选型</th>
                                 <th>型号</th>
                                 <th>规格</th>
                                 <th>主截面<br>(mm²)</th>
